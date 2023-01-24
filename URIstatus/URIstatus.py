@@ -3,7 +3,7 @@ from requests.packages import urllib3 as ulib
 from requests import head as HEAD
 from colorama import Fore
 
-# 多线程URI格式&状态检查工具  v1.2
+# 多线程URI格式&状态检查工具  v1.3
 # 版权所有: 林乐天(LLT)
 # 个人官网: https://birdy02.com
 # 个人博客: https://www.birdy02.com
