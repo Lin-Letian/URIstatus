@@ -1,0 +1,5 @@
+htp:/www.baidu.com
+htpwww.baidu.com
+httpswww.baidu.com
+https//www.baidu.com
+htps//www.baidu.com
