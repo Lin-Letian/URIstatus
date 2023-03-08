@@ -1,94 +1,141 @@
-import threading, colorama, re, os, base64, sys, time
-from requests.packages import urllib3 as ulib
-from requests import head as HEAD
-from colorama import Fore
+import threading, re, os, sys, datetime, csv
+from requests import head, get, post
+from bs4 import BeautifulSoup as bs
+from colorama import Fore, init
 
-# 多线程URI格式&状态检查工具  v1.3
-# 版权所有: 林乐天(LLT)
 # 个人官网: https://birdy02.com
 # 个人博客: https://www.birdy02.com
 
-help, banner = str(base64.b64decode("VXNhZ2U6IFVSSVN0YXR1cy5leGUgW29wdGlvbnNdCgpPcHRpb25zOgoKICAgIHMgLyAtcyAvIHNldHRpbmcgICAgc2V0IGZpbGUgYW5kIHNjYW4gdGhyZWFkICjorr7nva7mlofku7blkoznur/nqIspCiAgICBoIC8gLWggLyBoZWxwICAgICAgIGZvciBoZWxwICjluK7liqkpCiAgICBkIC8gLWQgLyBkZWZhdWx0ICAgIFVzZSB0aGUgZGVmYXVsdCBvcHRpb24gKOS9v+eUqOm7mOiupOmFjee9rikKICAgIGQgLyAtZCAvIGRlZmF1bHQgIG51bSAgICB1c2UgZGVmYXVsdCBmaWxlIGFuZCBzZXQgc2NhbiB0aHJlYWQgKOS9v+eUqOm7mOiupOaWh+S7tuW5tuiuvue9rue6v+eoi+aVsCkKCi5cVVJJU3RhdHVzLmV4ZQoKV2VsQ29tZSB0byBCaXJkeSdzIEJsb2co5p6X5LmQ5aSp55qE5Liq5Lq65Y2a5a6iKQpodHRwczovL3d3dy5iaXJkeTAyLmNvbQ==").decode("utf-8")), str(base64.b64decode("IwojICAgICAgICAgICAgICAgX18gICAgICAgICAgICAgIF9fICAgICAgICAgICBfX19fX19fX19fX18gCiMgICAgICAgICAgICAgIHwgIHwgICAgICAgICAgICB8ICB8ICAgICAgICAgfF9fX18gICAgX19fX3wKIyAgICAgICAgICAgICAgfCAgfCAgICAgICAgICAgIHwgIHwgICAgICAgICAgICAgIHwgIHwKIyAgICAgICAgICAgICAgfCAgfCAgICAgICAgICAgIHwgIHwgICAgICAgICAgICAgIHwgIHwKIyAgICAgICAgICAgICAgfCAgfF9fX19fXyAgICAgIHwgIHxfX19fX18gICAgICAgIHwgIHwKIyAgICAgICAgICAgICAgfF9fX19fX19fX3wgICAgIHxfX19fX19fX198ICAgICAgIHxfX3wKIwojCiMKIyAgICAgICAgICAgICAgICDlpJrnur/nqIvmibnph49VUknmoLzlvI8m54q25oCB5qOA5p+l5bel5YW3ICB2IDEuMgojCiMgICAgICAgICAgICAgICAg54mI5p2D5omA5pyJ77ya5p6X5LmQ5aSpIExMVAojCiMKIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIwoKClsqXSAg5L+u5q2jVVJM5ZCI5qC85oCn77yM5L+u5q2jWyJodHA6Ly94eC54eCIsImh0dHA6L3h4Lnh4IiwiaHRwL3h4Lnh4IiwuLi4uLl0KWypdICDmo4DmtYtVUkznmoTlj6/orr/pl67mgKcKWypdICBVc2UgaCAvIC1oIC8gaGVscCAgZm9yIGhlbHAKClsrXSDohJrmnKzov5DooYzov4fnqIvkuK3or7fli7/lvLrooYzpgIDlh7oKCldlbENvbWUgdG8gQmlyZHkncyBCbG9nKOael+S5kOWkqeeahOS4quS6uuWNmuWuoikKaHR0cHM6Ly93d3cuYmlyZHkwMi5jb20=").decode("utf-8")) + "\n"
+banner = '''
+>>  多线程URI格式&状态修正_检查工具
+>>  版权所有: 林乐天(LLT)
+
+[*]  修正URL合格性，修正["htp://xx.xx","http:/xx.xx","htp/xx.xx",.....]
+[*]  检测URL的可访问性
+[!]  脚本运行过程中请勿强行退出
+
+WelCome to Birdy's Blog (林乐天的个人博客)
+https://www.birdy02.com
+'''
+
 
 class URIstatus:
-    def __init__(self, file, xc):
-        self.yes, self.no = 0, 0
-        if not os.path.exists('output'): os.mkdir('output')
-        self.URIstatusX(self.urIp(file, xc))
+    def __init__(self, conf):
+        self.Ok = self.Err = self.c200 = [['状态', '请求方法', 'URL', '标题']]  # 可访问、访问失败、状态码200
+        print(Fore.YELLOW + f'[-] 配置情况:\n[+] URL输入文件: {conf[0]}\n[+] 线程数: {conf[1]}')
+        self.dirName = self.checkinit(conf[0])  # 获取输出结果
+        Threadlist = self.getUriList(conf[0], conf[1])  # 获取url列表并根据线程数进行分配列表
+        print('[*] 初始化完成，多线程启动\n')
+        print(Fore.WHITE + '|  Code | Method |\t\t\t\tURL\t\t\t\t|\tTitle')
+        print(Fore.WHITE + '———————————————————————————————————————————————————————————————————')
+        for i in Threadlist: i.start()
+        for i in Threadlist: i.join()
+        print(Fore.WHITE + '———————————————————————————————————————————————————————————————————\n')
+        self.write_csv()
 
-    def URIstatusX(self, URIS):
-        thread_list = [threading.Thread(target=self.URIstatus, args=(URIS[i],)) for i in range(len(URIS))]
-        for t in thread_list: t.start()
-        for t in thread_list: t.join()
+    def checkinit(self, UriFile):  # 初始化检查
+        try:
+            open(UriFile)  # 判断 url.txt 是否存在
+        except:
+            sys.exit(Fore.RED + f"[-] 文件{UriFile}丢失")
+        if not os.path.exists('output'): os.mkdir('output')  # 确保输出路径不存在无异常
+        return datetime.datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
 
-    def URIstatus(self, Ulist):
-        global num, time
+    def getUriList(self, ufile, xc):  # 对URI的处理
+        with open(ufile) as U:  # 读取URL到列表中
+            ulist = [i for i in list(set(U.read().split('\n'))) if i != '']
+        print(Fore.GREEN + f'[*] 开始url读取::获取{len(ulist)}条URI(第一次去重)')
+        protocol = ['https://', 'http://', 'https:/', 'http:/', 'htps://', 'htp://', 'htps:/',  # 协议库
+                    'htp:/', 'https:', 'http:', 'htps:', 'htp:', 'https//', 'https/', 'http//',  # 不可改变列表顺序
+                    'http/', 'htps//', 'htps/', 'htp//', 'htp/', 'https', 'http', 'htps', 'htp']
+        newUlist, nuri = [], None  # 去协议之后的新列表
+        print(Fore.GREEN + "[*] 开始url处理::去除(不规则)协议,去重")
+        for url in ulist:  # 获取单个url
+            for prot in protocol:  # 循环获取协议
+                nuri = re.sub(prot, '', url, re.I)  # 正则匹配掉协议
+                if url != nuri: break  # 当匹配到协议后停止循环
+            newUlist.append(nuri)
+        newUlist = list(set(newUlist))  # 通过set()二次去重
+        print(Fore.GREEN + "[*] 开始分配线程::根据线程分配url组")
+        SURI = [[] for N in range(xc)]  # 根据线程数分组
+        [SURI[i % xc].append(e) for i, e in enumerate(newUlist)]  # 将总url根据线程平均分配
+        return [threading.Thread(target=self.judge_status, args=(SURI[i],)) for i in range(xc)]  # 线程列表
+
+    def judge_status(self, Ulist):
         for url in Ulist:
-            status, Temp_url = self.URIStatue("https://" + url), ("https://" + url)
-            if status == 999:
-                status, Temp_url = self.URIStatue("http://" + url), ("http://" + url)
-                self.write_file(Temp_url, f"{result}") if status != 999 else self.write_file(url, f"{fail}")
-            else: self.write_file(Temp_url, f"{result}")
-            print(Fore.YELLOW + f'\r  Running: 第 {num}/{len(self.ucount)} 条. 成功{self.yes}条. 失败{self.no}条', end='')
-            num = num + 1
+            new_url = f'https://{url}'
+            res = self.get_statuecode(new_url)
+            if res[0] != "000":
+                print(Fore.WHITE + f"|  {res[0]}  |  {res[1]}  | \t{new_url}\t\t{res[-1]}")
+                self.Ok.append(res)
+            else:
+                new_url = f'http://{url}'
+                res = self.get_statuecode(new_url)
+                if res[0] != "000":
+                    print(Fore.WHITE + f"|  {res[0]}  |  {res[1]}  | \t{new_url}\t\t{res[-1]}")
+                    self.Ok.append(res)
+                else:
+                    print(Fore.RED + f"|  ERR  |  NONE  | \t目标不可达::{url}")
+                    self.Err.append(url)
 
-    def URIStatue(self, url):
+    def get_statuecode(self, url):
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.63 Safari/537.36 Edg/102.0.1245.39',
+            'Host': url.split('://')[-1], 'Referer': url,
+            'sec-ch-ua': '"Chromium";v="110", "Not A(Brand";v="24", "Google Chrome";v="110"'
+        }
         try:
-            ulib.disable_warnings()
-            return int(HEAD(url=url, timeout=5, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.63 Safari/537.36 Edg/102.0.1245.39', 'HEAD': f"/{url}", 'Host': url.split('://')[1], 'Referer': f'{url}'}).status_code)
-        except: return 999
+            response = get(url=url, timeout=10, headers=headers)
+            return [response.status_code, "GET ", url,
+                    bs(response.content, 'html.parser').find('title').text.replace('\n', '').replace('\r', '')]
+        except:
+            try:
+                response = post(url=url, timeout=10, headers=headers)
+                return [response.status_code, "POST", url,
+                        bs(response.content, 'html.parser').find('title').text.replace('\n', '').replace('\r', '')]
+            except:
+                try:
+                    response = head(url=url, timeout=10, headers=headers)
+                    return [response.status_code, "HEAD", url, 'HEAD方法无法获取标题']
+                except:
+                    return ["000", None, '']
 
-    def write_file(self, data, file):
-        if "_Result.txt" in file: self.yes = self.yes + 1
-        if "_Fail.txt" in file: self.no = self.no + 1
-        File = open(f"./output/{str(file)}", 'a')
-        File.seek(0), File.write(f"{data}\n"), File.close()
+    def write_csv(self, isc200=False):
+        print(Fore.GREEN + "[*] 正在保存结果")
+        dir_path = f"output\\{self.dirName}"
+        if os.path.exists(dir_path):  # 判断目录是否已经存在
+            input(f"检测到 {dir_path} 目录已经存在,将删除该目录并重新创建，请确认：")
+            try:  # 避免人工删除目录导致的报错
+                os.rmdir(dir_path)  # 当目录存在时候
+            except:
+                pass
+        if not os.path.exists(dir_path): os.mkdir(dir_path)  # 判断目录不存在时候进行创建
+        if not isc200:
+            if len(self.Ok) > 1:
+                with open(f'{dir_path}\\Result_Ok.csv', 'w', newline="", encoding="utf-8") as csvfile:
+                    spamwriter = csv.writer(csvfile, dialect='excel')
+                    for ok in self.Ok: spamwriter.writerow(ok)
+            if len(self.Err) > 1:
+                with open(f'{dir_path}\\Fail.csv', 'w', newline="", encoding="utf-8") as csvfile:
+                    spamwriter = csv.writer(csvfile, dialect='excel')
+                    for fail in self.Err: spamwriter.writerow(fail)
+        if isc200:
+            with open(f'{dir_path}\\Code_200.csv', 'w', newline="", encoding="utf-8") as csvfile:
+                spamwriter = csv.writer(csvfile, dialect='excel')
+                for c2 in self.c200: spamwriter.writerow(c2)
+        print(Fore.YELLOW + f"[-] 访问成功 {len(self.Ok)} 个")
+        print(Fore.YELLOW + f"[-] 访问失败 {len(self.Err)} 个")
+        print(Fore.YELLOW + f'[-] 输出文件保存至目录:: {os.getcwd()}\\{dir_path}')
 
-    def urIp(self, ufile, xc):
-        self.ucount = ulist = self.CountURI(ufile)
-        print(Fore.WHITE + "\n[+]\tURI:   " + str(len(ulist)) + "个\n", end='')
-        ulist, ulists, SURI = self.urlProtocol(ulist), [], [[] for i in range(xc)]
-        for i, e in enumerate(ulist): SURI[i % xc].append(e)
-        for i in SURI: ulists.append(i)
-        return ulists
-
-    def urlProtocol(self, sUlist):
-        print(Fore.YELLOW + "\n\n数据整理中，即将开始...", end='')
-        NURI = []
-        for url in sUlist:
-            protocol = ['https://', 'http://', 'https:/', 'http:/', 'htps://', 'htp://', 'htps:/', 'htp:/', 'https:', 'http:', 'htps:', 'htp:', 'https//', 'https/', 'http//', 'http/', 'htps//', 'htps/', 'htp//', 'htp/', 'https', 'http', 'htps', 'htp']
-            for i in range(len(protocol)):
-                nurI = re.sub(protocol[i], '', url, re.I)
-                if url != nurI: break
-            NURI.append(nurI)
-        return NURI
-
-    def CountURI(self, ufile):  # 统计URL
-        try:
-            with open(ufile, 'r', encoding='utf-8') as U: ulist = [i for i in list(set(U.read().split('\n'))) if i != '']
-        except: ulist = []
-        return ulist
-
-    def __del__(self, ): print(Fore.GREEN + "\n\n\n\n\t\t>>> 成功 " + str(len(self.CountURI("./output/" + result))) + " 个，请在./output目录" + result + "文件中查看\n\n" + Fore.GREEN + "\t\t>>> 失败 " + str(len(self.CountURI("./output/" + fail))) + " 个，请在./output目录" + fail + "文件中查看\n\n\n", end=''),print(Fore.WHITE+"exit")
-
-class InitStatue:
-    def getArgv(self):
-        if len(sys.argv) >2: thread = int(sys.argv[2]) if int(sys.argv[2]) >0 else 4
-        try: return ['url.txt', thread if len(sys.argv) >2 else 4] if sys.argv[1] in ['-d', 'default', 'd'] else self.getSet() if sys.argv[1] in ['-s', 's', 'setting'] else sys.exit()
-        except:sys.exit(help)
-
-    def getSet(self, dft=['url.txt', 4], inputs=[]):
-        inputs.append(input("请选择Url文件:")), inputs.append(input("线程(1-40):"))
-        try: return inputs if inputs[0] != '' and inputs[1] != '' else dft
-        except: return dft
-
-    def IsFile(self, arg):
-        try: return [arg[0] if open(arg[0]) else sys.exit(), int(arg[1])]
-        except: sys.exit(f"\n\n\r文件{arg[0]}丢失\t或{arg[1]}非数字")
 
 if __name__ == "__main__":
-    All_list, result, fail, num, file, xc = [], f"{int(time.time())}_Result.txt", f"{int(time.time())}_Fail.txt", 1, None, None
+    init()  # colorama.init()
+    print(Fore.BLUE + banner)
+    xc = input('请输入线程,县城越高,数据准确度会降低\n请根据实际网络状况来设定,建议[4-10],最大20,默认4线程:')
     try:
-        ini = InitStatue().IsFile(InitStatue().getArgv())
-        os.system('cls'), colorama.init(), print(Fore.BLUE + banner, end=''), print(Fore.GREEN + f"\n{str(ini)}"), URIstatus(ini[0], ini[1] if int(ini[1]) < 41 and int(ini[1]) > 0 else 4), sys.exit(input(Fore.GREEN + '\n回车结束：'))
-    except Exception as e: sys.exit(f"{str(e)}")
+        xc = int(xc)  # 将输入线程转换为int类型，失败则默认4线程
+        xc = xc if xc <= 20 else 20
+    except:
+        xc = 4
+    uri = URIstatus(['url.txt', xc])
+    sys.exit(input("回车结束:"))
